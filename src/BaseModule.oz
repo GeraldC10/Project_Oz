@@ -200,12 +200,91 @@ define
 
     %% STUDENT END
 
+    %% STUDENT START: CRISOSTOMO Gerald
+    %declare 
+    fun {Chiffres N Acc}
+        if N < 10 then N | Acc
+        else
+            {Chiffres N div 10 (N mod 10) | Acc}
+        end
+    end
+
+    fun {Paires Chiffres}
+        case Chiffres 
+            of nil then nil
+            [] _|nil then nil
+            [] Chif1|Chif2|Rest then 
+                (Chif1 * 10 + Chif2) | {Paires Rest}
+            end
+    end
+
+    fun {Convert NombrePair}
+        case NombrePair
+        of 10 then a
+        [] 11 then b
+        [] 12 then c
+        [] 13 then d
+        [] 14 then e
+        [] 15 then f
+        [] 16 then g
+        [] 17 then h
+        [] 18 then i
+        [] 19 then j
+        [] 20 then k
+        [] 21 then l
+        [] 22 then m
+        [] 23 then n
+        [] 24 then o
+        [] 25 then p
+        [] 26 then q
+        [] 27 then r
+        [] 28 then s
+        [] 29 then t
+        [] 30 then u
+        [] 31 then v
+        [] 32 then w
+        [] 33 then x
+        [] 34 then y
+        [] 35 then z
+        [] 36 then ' '
+        end
+    end
+
+
+    fun {TraiterPair X}
+        Nombre = X mod 37
+        NombreFinal = if Nombre < 10 then 36 else Nombre end
+    in
+        {Convert NombreFinal}
+    end
+
+
+    fun {PairesToString Paires}
+        case Paires
+        of nil then nil
+        [] H|T then
+            {TraiterPair H} # {PairesToString T}
+        end
+    end
+
+    %% STUDENT END 
+
+
+
     %% Return a string representation of the secret
     fun {Decode Blockchain}
-        %% STUDENT START:
-        %% TODO
-        ""
-    
+        %% STUDENT START: CRISOSTOMO Gerald
+        case Blockchain 
+            of nil then nil
+            [] Block|Rest then
+                ChiffresHash = {Chiffres Block.hash nil}
+                PairesHash = {Paires ChiffresHash}
+                StringBloc = {PairesToString PairesHash}
+        in
+            StringBloc # {Decode Rest} 
+        end
+
+        %% STUDENT END
     end
 
 
