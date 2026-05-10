@@ -47,14 +47,13 @@ run: all
 	$(OZE) $(MAIN_OZF)
 
 # Executer avec ExtensionDenylist
-run-denylist: $(DENYLIST_OZF) $(HELPER_OZF)
-	cp $(DENYLIST_OZF) $(BASE_OZF)
+run-denylist: $(DENYLIST_OZF) $(HELPER_OZF) $(MAIN_OZF)
+	copy src\ExtensionDenylist.ozf src\BaseModule.ozf
 	$(OZE) $(MAIN_OZF)
-	cp $(BASE_OZF) $(BASE_OZF)
 
 # Executer avec ExtensionEffort
 run-effort: $(EFFORT_OZF) $(HELPER_OZF) $(MAIN_OZF)
-	cp $(EFFORT_OZF) $(BASE_OZF)
+	copy src\ExtensionEffort.ozf src\BaseModule.ozf
 	$(OZE) $(MAIN_OZF)
 
 # Nettoyer
