@@ -2,6 +2,9 @@ functor
 export
     decode:Decode
     executeBlockchain:ExecuteBlockchain
+    biggestSenders:BiggestSenders
+    receivedMost:ReceivedMost
+    moneyPeak:MoneyPeak
 define
     
     %% PUT ANY AUXILIARY/HELPER FUNCTIONS THAT YOU NEED
@@ -52,7 +55,7 @@ define
     fun{HashBlock B}
         (B.number + B.previousHash + {SomHashTransaction B.transactions}) mod 1000000
     end
-% 2.1.4 Validation d’une transaction
+% 2.1.4 Validation d'une transaction
 
     % vérifie si l'utilisateur existe
     fun {UserExiste State UserId}
@@ -176,6 +179,7 @@ define
         in FinalState#(NewBlock|RestChain)
         end
     end
+
     % vérifie si le bloc est Ok
     fun{BlockOk  Block PreBlock State}
         NumberOk = (Block.number == PreBlock.number + 1)
@@ -201,7 +205,7 @@ define
     %% STUDENT END
 
     %% STUDENT START: CRISOSTOMO Gerald
-    %declare 
+
     %Convertit un entier en liste de chiffres ex: 256424 -> [2 5 6 4 2 4]
     fun {Chiffres N Acc}
         if N < 10 then N | Acc
@@ -270,9 +274,185 @@ define
         end
     end
 
+    %Extrait toutes les transactions de tous les blocs en une liste plate
+    fun {GetAllTransactions Blockchain}
+        case Blockchain
+        of nil then nil
+        [] Block|Rest then
+            {Append Block.transactions {GetAllTransactions Rest}}
+        end
+    end
+
+    % Cherche le compteur d'un sender dans la liste, retourne 0 si absent
+    fun {FindSender Counts Sender}
+        case Counts
+        of nil then 0
+        [] (S#C)|Rest then
+            if S == Sender then C
+            else {FindSender Rest Sender}
+            end
+        end
+    end
+
+    % Incremente le compteur du sender, l'ajoute avec 1 s'il est nouveau
+    fun {Update Counts Sender}
+        case Counts
+        of nil then [Sender#1]
+        [] (S#C)|Rest then
+            if S == Sender then (S#(C+1))|Rest
+            else (S#C)|{Update Rest Sender}
+            end
+        end
+    end
+
+    % Compte le nombre de transactions envoyees par chaque sender
+    fun {CountSenders Transactions Counts}
+        case Transactions
+        of nil then Counts
+        [] T|Rest then 
+            {CountSenders Rest {Update Counts T.sender}}
+        end
+    end
+
+    % Insere un element dans une liste triee par ordre decroissant, egalite -> id croissant
+    fun {Insert Elem Liste}
+        case Liste
+        of nil then [Elem]
+        [] (S#C)|Rest then
+            Sender#Count = Elem
+        in
+            if Count > C then Elem|Liste
+            elseif Count == C andthen Sender < S then Elem|Liste
+            else (S#C)|{Insert Elem Rest}
+            end
+        end
+    end
+
+    % Tri par insertion sur une liste de paires id#valeur
+    fun {Sort List}
+        case List
+        of nil then nil
+        [] H|Rest then
+            {Insert H {Sort Rest}}
+        end
+    end
+
+    % Retourne les N premiers elements d'une liste
+    fun {FirstN Liste N}
+        if N =< 0 then nil
+        else
+            case Liste
+            of nil then nil
+            [] H|Rest then
+                if N == 0 then nil
+                else H|{FirstN Rest N-1}
+                end
+            end
+        end
+    end
+
+    % Retourne les N senders ayant fait le plus de transactions, ~1 si N <= 0
+    fun {BiggestSenders Blockchain N}
+        if N =< 0 then ~1
+        else
+            Transactions = {GetAllTransactions Blockchain}
+            Counts = {CountSenders Transactions nil}
+            Tries = {Sort Counts}
+        in
+            {FirstN Tries N}
+        end
+    end
+
+    % Additionne la valeur recue par chaque receiver, l'ajoute s'il est nouveau
+    fun {UpdateReceiver Counts Receiver Value}
+        case Counts
+        of nil then [Receiver#Value]
+        [] (R#C)|Rest then
+            if R == Receiver then (R#(C+Value))|Rest
+            else (R#C)|{UpdateReceiver Rest Receiver Value}
+            end
+        end
+    end
+
+    % Additionne les valeurs de toutes les transactions recues par chaque receiver
+    fun {CountReceivers Transactions Counts}
+        case Transactions
+        of nil then Counts
+        [] T|Rest then
+            {CountReceivers Rest {UpdateReceiver Counts T.receiver T.value}}
+        end
+    end
+
+    % Retourne les N receivers ayant recu le plus de valeur, ~1 si N <= 0
+    fun {ReceivedMost Blockchain N}
+        if N =< 0 then ~1
+        else
+            Transactions = {GetAllTransactions Blockchain}
+            Counts = {CountReceivers Transactions nil}
+            Sorted = {Sort Counts}
+        in
+            {FirstN Sorted N}
+        end
+    end
+
+    % Met a jour le pic de solde d'un utilisateur si le nouveau solde est plus grand
+    fun {UpdatePeak Peaks UserId Balance}
+        case Peaks
+        of nil then [UserId#Balance]
+        [] (Id#Max)|Rest then
+            if Id == UserId then
+                if Balance > Max then (Id#Balance)|Rest
+                else (Id#Max)|Rest
+                end
+            else (Id#Max)|{UpdatePeak Rest UserId Balance}
+            end
+        end
+    end
+
+    % Applique une transaction et met a jour les pics du sender et receiver
+    fun {ApplyAndTrack T State Peaks}
+        NewState = {ApplyTransaction State T}
+        SenderBalance = {GetBalance NewState T.sender}
+        ReceiverBalance = {GetBalance NewState T.receiver}
+        PeaksAfterSender = {UpdatePeak Peaks T.sender SenderBalance}
+        PeaksAfterReceiver = {UpdatePeak PeaksAfterSender T.receiver ReceiverBalance}
+    in
+        NewState#PeaksAfterReceiver
+    end
+
+    % Rejoue toutes les transactions en maintenant les pics de solde
+    fun {TrackPeaks Transactions State Peaks}
+        case Transactions
+        of nil then Peaks
+        [] T|Rest then
+            NewState#NewPeaks = {ApplyAndTrack T State Peaks}
+        in
+            {TrackPeaks Rest NewState NewPeaks}
+        end
+    end
+
+    % Parcourt les peaks et retourne l'utilisateur avec le solde max sous forme id#solde
+    fun {FindMax Peaks CurrentMax}
+        case Peaks
+        of nil then CurrentMax
+        [] (Id#Balance)|Rest then
+            if Balance > CurrentMax.2 then
+                {FindMax Rest Id#Balance}
+            else
+                {FindMax Rest CurrentMax}
+            end
+        end
+    end
+
+    % Retourne l'utilisateur ayant eu le solde le plus eleve sous forme id#solde
+    fun {MoneyPeak Blockchain}
+        Transactions = {GetAllTransactions Blockchain}
+        Peaks = {TrackPeaks Transactions state() nil}
+    in
+        {FindMax Peaks 0#0}
+    end
+
     %% STUDENT END 
-
-
 
     %% Return a string representation of the secret
     fun {Decode Blockchain}
@@ -286,13 +466,9 @@ define
         in
             {VirtualString.toString StringBloc # {Decode Rest}} 
         end
-
         %% STUDENT END
     end
 
-
-    % This procedure is the starting point of the execution
-    % The GenesisState and the Transactions are given as input and the function is expected to bound the FinalState and the FinalBlockchain to their respective final values.
     proc {ExecuteBlockchain GenesisState Transactions FinalState FinalBlockchain}
         %% STUDENT START: Aurelle Awountsa
     EtatInitial = {ConvertirGenesis GenesisState}
