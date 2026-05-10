@@ -14,15 +14,17 @@ MAIN_SRC=Main.oz
 
 # Fichiers compilés (foncteurs)
 BASE_OZF=$(BASE_SRC:.oz=.ozf)
+EFFORT_SRC=src/ExtensionEffort.oz
+DENYLIST_SRC=src/ExtensionDenylist.oz
 HELPER_OZF=$(HELPER_SRC:.oz=.ozf)
 MAIN_OZF=$(MAIN_SRC:.oz=.ozf)
 
-test: $(BASE_OZF) $(HELPER_OZF) $(TEST_OZF)
-	$(OZE) $(TEST_OZF)
-
-$(TEST_OZF): $(TEST_SRC) $(BASE_OZF) $(HELPER_OZF)
-	$(OZ) -c $(TEST_SRC) -o $(TEST_OZF)
-
+# Fichiers compilés
+BASE_OZF=$(BASE_SRC:.oz=.ozf)
+EFFORT_OZF=$(EFFORT_SRC:.oz=.ozf)
+DENYLIST_OZF=$(DENYLIST_SRC:.oz=.ozf)
+HELPER_OZF=$(HELPER_SRC:.oz=.ozf)
+MAIN_OZF=$(MAIN_SRC:.oz=.ozf)
 	
 # Cible par défaut : tout compiler
 all: $(BASE_OZF) $(HELPER_OZF) $(MAIN_OZF)
@@ -43,6 +45,22 @@ clean:
 # Commande pour exécuter le programme (exemple avec arguments)
 run: all
 	$(OZE) $(MAIN_OZF)
+
+# Executer avec ExtensionDenylist
+run-denylist: $(DENYLIST_OZF) $(HELPER_OZF)
+	cp $(DENYLIST_OZF) $(BASE_OZF)
+	$(OZE) $(MAIN_OZF)
+	cp $(BASE_OZF) $(BASE_OZF)
+
+# Executer avec ExtensionEffort
+run-effort: $(EFFORT_OZF) $(HELPER_OZF) $(MAIN_OZF)
+	cp $(EFFORT_OZF) $(BASE_OZF)
+	$(OZE) $(MAIN_OZF)
+
+# Nettoyer
+clean:
+	rm -f $(BASE_OZF) $(EFFORT_OZF) $(DENYLIST_OZF) $(HELPER_OZF) $(MAIN_OZF)
+
 
 zip: clean
 	@if [ ! -f "rapport.pdf" ]; then \

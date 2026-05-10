@@ -1,4 +1,6 @@
 functor
+import 
+    System
 export
     decode:Decode
     executeBlockchain:ExecuteBlockchain
@@ -102,7 +104,8 @@ define
         ValueOk = (T.value >= 0)
         MaxEffortOk = (T.max_effort >= 0)
         EffortOk = (T.effort =< T.max_effort)
-    in NonceOk andthen HashOk andthen SenderOk andthen ValueOk 
+    in 
+        NonceOk andthen HashOk andthen SenderOk andthen ValueOk 
         andthen MaxEffortOk andthen EffortOk
     end
 
@@ -139,6 +142,52 @@ define
             end
         end
     end
+    % Verifie si un utilisateur est dans la denylist
+    fun {IsBlacklisted  State UserId}
+        {Member UserId State.denylist}
+    end
+
+    % Ajoute un utilisateur a la denylist
+    fun {AddToDenylist State UserId}
+        {AdjoinAt State denylist UserId|State.denylist}
+    end
+
+    % Compte combien de fois UserId apparait dans une liste de transactions
+    fun {CountSenderTxs Txlist UserId}
+        case Txlist
+        of nil then 0
+        [] FirstTx|RestTxs then 
+            if FirstTx.sender == UserId then
+                1 + {CountSenderTxs RestTxs UserId}
+            else
+                {CountSenderTxs RestTxs UserId}
+            end
+        end
+    end
+
+    % Construit la denylist a partir de toutes les transactions d'un bloc
+    fun {UpdateDenylist TxList State}
+        Senders = {Map TxList fun {$ Tx} Tx.sender end}
+        UniqueSenders = {FoldL Senders
+            fun {$ Acc S}
+                if {Member S Acc} then Acc
+                else S|Acc
+                end
+            end
+            nil
+        }
+    in
+        {FoldL UniqueSenders
+            fun {$ AccState Sender}
+                if {CountSenderTxs TxList Sender} >= 3 then
+                    {AddToDenylist AccState Sender}
+                else
+                    AccState
+                end
+            end
+            State
+        }
+    end
 
     % Ajout d'une transaction valideà un bloc
     fun{FiltreTransaction ListeTransaction State CurrentEffort}
@@ -148,11 +197,16 @@ define
             TransactionEffort = {AdjoinAt FirstTx effort {CalEffort FirstTx}}
             NewEffort = CurrentEffort + TransactionEffort.effort
         in 
-            if {TransactionOk TransactionEffort State} andthen NewEffort =< 300 then
+            % On verifie d'abord si le sender est blackliste
+            if {IsBlacklisted State TransactionEffort.sender} then
+                {FiltreTransaction RestTxs State CurrentEffort}
+            elseif {TransactionOk TransactionEffort State} andthen NewEffort =< 300 then
                 NewState = {ApplyTransaction State TransactionEffort}
-                ValidTxs # FinalState = {FiltreTransaction RestTxs NewState NewEffort}
-            in (TransactionEffort | ValidTxs) # FinalState
-            else {FiltreTransaction RestTxs State CurrentEffort}
+                ValidTxs#FinalState = {FiltreTransaction RestTxs NewState NewEffort}
+            in 
+                (TransactionEffort | ValidTxs) # FinalState
+            else 
+                {FiltreTransaction RestTxs State CurrentEffort}
             end
         end
     end
@@ -170,9 +224,12 @@ define
         of nil then State # nil
         [] _|_ then
             CurrentTxs # RestTxs = {GroupByBlock ListeTransaction BlockNumber}
+            % Filtrer les transactions AVANT de mettre a jour la denylist
             ValidTxs # NewState = {FiltreTransaction CurrentTxs State 0}
+            % Mettre a jour la denylist APRES avoir traite le bloc
+            NewStateWithDenylist = {UpdateDenylist CurrentTxs NewState}
             NewBlock = {CreeBlock ValidTxs BlockNumber PreBlock}
-            FinalState#RestChain = {ProcessBlocks RestTxs NewState NewBlock BlockNumber+1}
+            FinalState#RestChain = {ProcessBlocks RestTxs NewStateWithDenylist NewBlock BlockNumber+1}
         in FinalState#(NewBlock|RestChain)
         end
     end
@@ -188,14 +245,15 @@ define
     end 
 
     fun {ConvertirGenesis Genesis}
-    Adresses = {Arity Genesis}
+        Adresses = {Arity Genesis}
+        BaseState = {FoldL Adresses
+            fun {$ EtatAcc Adresse}
+                {AdjoinAt EtatAcc Adresse user(balance:Genesis.Adresse nonce:0)}
+            end
+            state()
+        }
     in
-    {FoldL Adresses
-        fun {$ EtatAcc Adresse}
-            {AdjoinAt EtatAcc Adresse user(balance:Genesis.Adresse nonce:0)}
-        end
-        state()
-    }
+        {AdjoinAt BaseState denylist nil}
     end
 
     %% STUDENT END
@@ -267,6 +325,7 @@ define
         end
     end
 
+    
     %% STUDENT END 
 
 
@@ -281,7 +340,7 @@ define
                 PairesHash = {Paires ChiffresHash}
                 StringBloc = {PairesToString PairesHash}
         in
-            {VirtualString.toString StringBloc # {Decode Rest}} 
+            {VirtualString.toString StringBloc # {Decode Rest}}
         end
 
         %% STUDENT END
@@ -292,9 +351,11 @@ define
     % The GenesisState and the Transactions are given as input and the function is expected to bound the FinalState and the FinalBlockchain to their respective final values.
     proc {ExecuteBlockchain GenesisState Transactions FinalState FinalBlockchain}
         %% STUDENT START: Aurelle Awountsa
-    EtatInitial = {ConvertirGenesis GenesisState}
-    GenesisBlock = block(number: ~1 previousHash: 0 transactions: nil hash: 0)
-    ResultState # ResultChain = {ProcessBlocks Transactions EtatInitial GenesisBlock 0}    in
+        EtatInitial = {ConvertirGenesis GenesisState}
+        GenesisBlock = block(number: ~1 previousHash: 0 transactions: nil hash: 0)
+        
+        ResultState # ResultChain = {ProcessBlocks Transactions EtatInitial GenesisBlock 0}    
+    in
         FinalState = ResultState
         FinalBlockchain = ResultChain
         %% STUDENT END
